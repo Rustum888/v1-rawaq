@@ -11,6 +11,46 @@ app.use(express.json({ limit: '10mb' }));
 
 const PORT = Number(process.env.PORT) || 3000;
 
+const TIMEOUTS = {
+  ollamaGeneration: 180000,
+  evaluatorGeneration: 180000,
+  webSearch: 60000,
+  searxng: 30000,
+  tts: 30000,
+  healthCheck: 5000,
+} as const;
+
+function extractOpenAIWebSources(response: any) {
+  const sources = new Map<string, { url: string; title: string }>();
+  const walk = (value: any) => {
+    if (!value || typeof value !== 'object') return;
+    if (value.type === 'url_citation' && value.url_citation?.url) {
+      sources.set(value.url_citation.url, {
+        url: value.url_citation.url,
+        title: value.url_citation.title || value.url_citation.url,
+      });
+    }
+    if (value.url && typeof value.url === 'string' && (value.type === 'source' || value.type === 'web_search_result')) {
+      sources.set(value.url, { url: value.url, title: value.title || value.url });
+    }
+    for (const child of Object.values(value)) walk(child);
+  };
+  walk(response);
+  return [...sources.values()];
+}
+
+function extractOpenAIOutputText(response: any) {
+  if (typeof response?.output_text === 'string') return response.output_text;
+  const texts: string[] = [];
+  const walk = (value: any) => {
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.text === 'string') texts.push(value.text);
+    for (const child of Object.values(value)) walk(child);
+  };
+  walk(response?.output);
+  return texts.join('\n');
+}
+
 // Initialize Gemini Client
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || '',
@@ -86,7 +126,7 @@ ${angleOrQuestion ? `الزاوية أو السؤال الرئيسي: "${angleOr
           contents: categoriesPrompt,
           config: { temperature: 0.2 },
         });
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini Timeout')), 4000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini Timeout')), TIMEOUTS.webSearch));
 
         const response: any = await Promise.race([geminiPromise, timeoutPromise]);
 
@@ -195,7 +235,6 @@ app.post('/api/projects/research', async (req, res) => {
       queries, 
       manualSources, 
       searxngUrl,
-      openaiKey 
     } = req.body;
 
     const researchProvider = provider || 'manual';
@@ -364,61 +403,81 @@ app.post('/api/projects/research', async (req, res) => {
       });
     }
 
-    // Provider 3: OpenAI Web Search
+    // Provider 3: OpenAI Web Search (Responses API + real web_search tool)
     if (researchProvider === 'openai') {
-      const apiKey = openaiKey || process.env.OPENAI_API_KEY;
+      const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
         return res.status(400).json({
+          providerStatus: 'OpenAI key missing',
           error: 'لم يتم تزويد مفتاح OpenAI API. يرجى إدخال المفتاح في الإعدادات أو استخدام البحث اليدوي.',
           isManualResearchRequired: true,
         });
       }
 
-      // Forward request to OpenAI API with fetch
       try {
-        const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        const openAiRes = await fetch('https://api.openai.com/v1/responses', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              {
-                role: 'system',
-                content: 'أنت باحث وثائقي، صغ استجابتك بصيغة JSON فقط واستخرج مصادر وحقائق دقيقة.'
-              },
-              {
-                role: 'user',
-                content: `بحث عن الموضوع: "${topic || title}". استخرج 5 أدلة ومصادر موثوقة.`
-              }
-            ],
-            response_format: { type: 'json_object' }
+            model: process.env.OPENAI_SEARCH_MODEL || 'gpt-5',
+            tools: [{ type: 'web_search' }],
+            tool_choice: 'required',
+            input: `أنت باحث وثائقي. ابحث فعلياً في الإنترنت عن الموضوع "${topic || title}". استخرج 5 أدلة ومصادر موثوقة، وأعد JSON فقط مع sources وclaims وtopicSummary. لا تخترع أي رابط أو مصدر.`
           }),
-          signal: AbortSignal.timeout(30000)
+          signal: AbortSignal.timeout(TIMEOUTS.webSearch)
         });
 
         if (!openAiRes.ok) {
           const errText = await openAiRes.text();
-          return res.status(500).json({ error: `خطأ من خادم OpenAI (${openAiRes.status}): ${errText}` });
+          return res.status(502).json({
+            providerStatus: 'OpenAI request failed',
+            error: `خطأ من خادم OpenAI (${openAiRes.status}): ${errText}`,
+          });
         }
 
         const openAiData = await openAiRes.json();
-        const contentStr = openAiData.choices?.[0]?.message?.content || '{}';
+        const contentStr = extractOpenAIOutputText(openAiData) || '{}';
         const parsed = JSON.parse(cleanJsonResponse(contentStr));
+        const citedSources = extractOpenAIWebSources(openAiData);
+        if (citedSources.length === 0) {
+          return res.status(502).json({
+            providerStatus: 'OpenAI request failed',
+            error: 'لم يُرجع OpenAI أي استشهادات بحث ويب فعلية. لم يتم اعتماد النتيجة كبحث مباشر.',
+          });
+        }
+        const citedByUrl = new Map(citedSources.map((source) => [source.url, source]));
 
         return res.json({
           success: true,
           providerUsed: 'openai',
           data: {
-            sources: (parsed.sources || []).map((s: any, idx: number) => ({ ...s, id: `src-o-${idx}`, providerUsed: 'openai' })),
+            sources: (parsed.sources || []).map((s: any, idx: number) => ({ ...s, id: `src-o-${idx}`, providerUsed: 'openai' }))
+              .filter((s: any) => citedByUrl.has(s.url))
+              .concat(citedSources.filter((source) => !(parsed.sources || []).some((s: any) => s.url === source.url)).map((source, idx) => ({
+                id: `src-o-citation-${idx}`,
+                title: source.title,
+                url: source.url,
+                publisher: 'OpenAI Web Search citation',
+                sourceType: 'web_search',
+                retrievedAt: new Date().toISOString(),
+                excerptOrEvidence: '',
+                providerUsed: 'openai',
+              }))),
             claims: (parsed.claims || []).map((c: any, idx: number) => ({ ...c, id: `claim-o-${idx}`, status: 'pending' })),
-            rawResults: [],
+            rawResults: citedSources.map((source) => ({
+              query: topic || title || '',
+              snippet: '',
+              url: source.url,
+              title: source.title,
+            })),
+            providerStatus: 'OpenAI Web Search: configured and live',
           }
         });
       } catch (openAiErr: any) {
-        return res.status(500).json({ error: `فشل الاتصال بخادم OpenAI: ${openAiErr.message}` });
+        return res.status(502).json({ providerStatus: 'OpenAI request failed', error: `فشل الاتصال بخادم OpenAI: ${openAiErr.message}` });
       }
     }
 
@@ -434,7 +493,7 @@ app.post('/api/projects/research', async (req, res) => {
 
       try {
         const searchUrl = `${endpoint.replace(/\/$/, '')}/search?q=${encodeURIComponent(topic || title)}&format=json`;
-        const searxRes = await fetch(searchUrl, { signal: AbortSignal.timeout(10000) });
+        const searxRes = await fetch(searchUrl, { signal: AbortSignal.timeout(TIMEOUTS.searxng) });
         if (!searxRes.ok) {
           return res.status(500).json({ error: `فشل الاتصال بـ SearXNG (كود ${searxRes.status})` });
         }
@@ -490,13 +549,13 @@ app.post('/api/projects/research', async (req, res) => {
  */
 app.post('/api/projects/evaluate-sources', async (req, res) => {
   try {
-    const { claims, sources, provider, selectedModel, baseUrl, openaiKey } = req.body;
+    const { claims, sources, provider, selectedModel, baseUrl } = req.body;
 
     if (!claims || claims.length === 0) {
       return res.status(400).json({ error: 'لا يوجد ادعاءات أو مصادر للتقييم' });
     }
 
-    const evalProvider = provider || 'gemini';
+    const evalProvider = provider || 'manual';
 
     const evalPrompt = `
 أنت مدقق ومقيم أكاديمي للمصادر التاريخية.
@@ -578,7 +637,7 @@ ${JSON.stringify({ claims, sources }, null, 2)}
             options: { temperature: 0.1 },
             stream: false,
           }),
-          signal: AbortSignal.timeout(180000), // 180s
+          signal: AbortSignal.timeout(TIMEOUTS.evaluatorGeneration),
         });
 
         if (!chatRes.ok) {
@@ -603,7 +662,7 @@ ${JSON.stringify({ claims, sources }, null, 2)}
 
     // Evaluator Provider 3: OpenAI
     if (evalProvider === 'openai') {
-      const apiKey = openaiKey || process.env.OPENAI_API_KEY;
+      const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
         return res.status(400).json({ error: 'مفتاح OpenAI API غير متوفر لتقييم المصادر' });
       }
@@ -622,7 +681,7 @@ ${JSON.stringify({ claims, sources }, null, 2)}
           ],
           response_format: { type: 'json_object' }
         }),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(TIMEOUTS.evaluatorGeneration),
       });
 
       if (!openAiRes.ok) {
@@ -716,7 +775,7 @@ ${c.evaluationNotes ? `- ملاحظات التقييم الأكاديمي: ${c.e
 
     // Verify model exists via /api/tags
     try {
-      const tagsRes = await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      const tagsRes = await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(TIMEOUTS.healthCheck) });
       if (tagsRes.ok) {
         const tagsData = await tagsRes.json();
         const availableNames = (tagsData.models || []).map((m: any) => m.name || m.model);
@@ -785,7 +844,7 @@ ${claimsContext}
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(chatPayload),
-        signal: AbortSignal.timeout(180000), // 180s timeout
+        signal: AbortSignal.timeout(TIMEOUTS.ollamaGeneration),
       });
     } catch (fetchErr: any) {
       let errorMsg = `تعذر الاتصال بخادم Ollama المحلي على ${host}.`;
@@ -930,7 +989,7 @@ ${sectionsContext}
           options: { temperature: 0.3 },
           stream: false,
         }),
-        signal: AbortSignal.timeout(180000), // 180s
+        signal: AbortSignal.timeout(TIMEOUTS.ollamaGeneration),
       });
 
       if (!chatRes.ok) {
@@ -1001,7 +1060,7 @@ app.post('/api/diagnostics/run', async (req, res) => {
   // 5. Ollama /api/tags
   const startTags = Date.now();
   try {
-    const tagsRes = await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    const tagsRes = await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(TIMEOUTS.healthCheck) });
     if (tagsRes.ok) {
       const tagsData = await tagsRes.json();
       const availableModels = (tagsData.models || []).map((m: any) => m.name || m.model);
@@ -1073,6 +1132,42 @@ app.post('/api/diagnostics/run', async (req, res) => {
     timestamp: new Date().toISOString(),
     results,
   });
+});
+
+/**
+ * Local TTS connectivity proxy. Only loopback endpoints are accepted to
+ * prevent the browser from turning this server into an SSRF proxy.
+ */
+app.post('/api/tts/synthesize', async (req, res) => {
+  const { text, endpointUrl, voiceName, speedRate } = req.body || {};
+  if (!endpointUrl || typeof endpointUrl !== 'string') {
+    return res.status(400).json({ connected: false, message: 'لم يتم تحديد عنوان خادم الصوت المحلي.' });
+  }
+
+  let target: URL;
+  try {
+    target = new URL(endpointUrl);
+    if (!['http:', 'https:'].includes(target.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)) {
+      throw new Error('Only loopback TTS endpoints are allowed');
+    }
+  } catch {
+    return res.status(400).json({ connected: false, message: 'عنوان خادم الصوت يجب أن يكون localhost أو 127.0.0.1.' });
+  }
+
+  try {
+    const ttsRes = await fetch(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text || '', voiceName, speedRate }),
+      signal: AbortSignal.timeout(TIMEOUTS.tts),
+    });
+    if (!ttsRes.ok) {
+      return res.status(502).json({ connected: false, message: `رفض خادم الصوت الطلب (HTTP ${ttsRes.status}).` });
+    }
+    return res.json({ connected: true, message: 'تم الاتصال بخادم الصوت المحلي.' });
+  } catch (err: any) {
+    return res.status(502).json({ connected: false, message: `تعذر الاتصال بخادم الصوت المحلي: ${err.message}` });
+  }
 });
 
 // Setup Vite Development Server or Serve Dist Static Files

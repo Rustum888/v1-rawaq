@@ -49,6 +49,7 @@ export const ResearchStage: React.FC<ResearchStageProps> = ({
   const [evaluating, setEvaluating] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [providerStatus, setProviderStatus] = useState<string>('Manual Research');
   
   // Provider Selectors
   const [researchProvider, setResearchProvider] = useState<ResearchProviderType>(
@@ -64,7 +65,6 @@ export const ResearchStage: React.FC<ResearchStageProps> = ({
   
   // Custom Provider Settings Inputs
   const [searxngUrl, setSearxngUrl] = useState('');
-  const [openaiKey, setOpenaiKey] = useState('');
   const [showConfigModal, setShowConfigModal] = useState(false);
 
   // Add Manual Source Form State
@@ -159,12 +159,18 @@ export const ResearchStage: React.FC<ResearchStageProps> = ({
           tone: project.tone,
           provider: researchProvider,
           searxngUrl,
-          openaiKey,
         }),
       });
 
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'فشل تنفيذ طلب البحث');
+      if (!res.ok) {
+        if (json.providerStatus) setProviderStatus(json.providerStatus);
+        throw new Error(json.error || 'فشل تنفيذ طلب البحث');
+      }
+
+      setProviderStatus(json.providerStatus || json.data?.providerStatus || (
+        researchProvider === 'manual' ? 'Manual Research' : `${researchProvider} response received`
+      ));
 
       const newSources: ResearchSource[] = json.data?.sources || [];
       const newClaims: ResearchClaim[] = json.data?.claims || [];
@@ -272,7 +278,6 @@ export const ResearchStage: React.FC<ResearchStageProps> = ({
           provider: evaluationProvider,
           selectedModel: project.ollama?.model || 'qwen3.5:4b',
           baseUrl: project.ollama?.baseUrl || 'http://localhost:11434',
-          openaiKey,
         }),
       });
 
@@ -383,6 +388,10 @@ export const ResearchStage: React.FC<ResearchStageProps> = ({
               السيناريو: OLLAMA ONLY
             </span>
 
+            <span className="px-3 py-1 bg-slate-800 text-slate-300 rounded-lg text-xs border border-slate-700">
+              حالة المزود: {providerStatus}
+            </span>
+
             <button
               onClick={() => setShowConfigModal(!showConfigModal)}
               className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition"
@@ -483,15 +492,9 @@ export const ResearchStage: React.FC<ResearchStageProps> = ({
                   className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200"
                 />
               </div>
-              <div>
-                <label className="block text-slate-400 mb-1">مفتاح OpenAI API (اختياري للبحث/التقييم):</label>
-                <input
-                  type="password"
-                  value={openaiKey}
-                  onChange={(e) => setOpenaiKey(e.target.value)}
-                  placeholder="sk-proj-..."
-                  className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200"
-                />
+              <div className="text-slate-400 leading-6">
+                <span className="block mb-1 text-amber-300">OpenAI Web Search</span>
+                يُقرأ المفتاح من <code>OPENAI_API_KEY</code> على الخادم فقط؛ لا يُقبل أو يُحفظ أي مفتاح في المتصفح.
               </div>
             </div>
           </div>
