@@ -1,0 +1,6 @@
+{
+  "name": "رِواق - صانع وثائقيات اليوتيوب",
+  "description": "بيئة عمل متكاملة وإنتاجية لإنشاء وثائقيات ومرئيات تعليمية وثقافية باللغة العربية مدعومة بالأدلة والمصادر",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
