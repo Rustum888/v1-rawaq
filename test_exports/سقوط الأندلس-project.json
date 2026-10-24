@@ -1,0 +1,93 @@
+{
+  "id": "proj-test-1792854419815",
+  "title": "سقوط الأندلس",
+  "topic": "أسباب سقوط الأندلس",
+  "durationMinutes": 10,
+  "tone": "ثقافي وتاريخي هادئ",
+  "claims": [
+    {
+      "id": "claim-m1",
+      "claimText": "تسببت صراعات ملوك الطوائف والانقسامات الداخلية في إضعاف الدولة الأندلسية بشكل دراماتيكي.",
+      "sourceTitle": "نفح الطيب من غصن الأندلس الرطيب",
+      "sourceUrl": "https://archive.org/details/nafhat-al-teeb",
+      "publisher": "المقرّي التلمساني",
+      "publicationDate": "1628",
+      "evidenceSummary": "وثق المقري نصوص المكاتبات الخلافية بين أمراء الطوائف واستعانتهم بالقوى الخارجية.",
+      "sourceType": "primary_document",
+      "status": "approved",
+      "isManual": true,
+      "manualSourceLabel": "Manual source — requires user review"
+    },
+    {
+      "id": "claim-m2",
+      "claimText": "سقوط غرناطة عام 1492م تم بوجب معاهدة تسليم وقعها أخر ملوكها أبو عبد الله الصغير.",
+      "sourceTitle": "دولة الإسلام في الأندلس",
+      "sourceUrl": "https://archive.org/details/islam-in-andalusia",
+      "publisher": "محمد عبد الله عنان",
+      "publicationDate": "1997",
+      "evidenceSummary": "تحليل دقيق لشروط معاهدة التسليم المكونة من 67 بنداً.",
+      "sourceType": "university_press",
+      "status": "approved",
+      "isManual": true,
+      "manualSourceLabel": "Manual source — requires user review"
+    },
+    {
+      "id": "claim-m3",
+      "claimText": "ادعاء غير موثق شفهي يدعي أسباباً خرافية لسقوط غرناطة.",
+      "sourceTitle": "رواية غير موثقة",
+      "sourceUrl": "https://example.com/unverified",
+      "publisher": "غير معروف",
+      "publicationDate": "2024",
+      "evidenceSummary": "لا يوجد دليل تاريخي مؤكد.",
+      "sourceType": "other",
+      "status": "rejected",
+      "isManual": true,
+      "manualSourceLabel": "Manual source — requires user review"
+    }
+  ],
+  "scriptSections": [
+    {
+      "id": "sec-1",
+      "title": "المقدمة: صعود وسقوط",
+      "type": "hook",
+      "content": "في هذا الوثائقي نستعرض الأسباب التاريخية المعقدة التي أدت إلى نهاية دولة الأندلس.",
+      "linkedClaimIds": [
+        "claim-m1"
+      ],
+      "wordCount": 25,
+      "estimatedDurationSeconds": 12
+    },
+    {
+      "id": "sec-2",
+      "title": "صراعات ملوك الطوائف",
+      "type": "body",
+      "content": "تسببت النزاعات الداخلية والتحالفات الخارجية المتقاطعة في تفتيت القوة السياسية والعسكرية.",
+      "linkedClaimIds": [
+        "claim-m1",
+        "claim-m2"
+      ],
+      "wordCount": 30,
+      "estimatedDurationSeconds": 15
+    }
+  ],
+  "scenes": [
+    {
+      "id": "scene-1",
+      "sectionId": "sec-1",
+      "sceneNumber": 1,
+      "startTimeCode": "00:00",
+      "endTimeCode": "00:30",
+      "durationSeconds": 30,
+      "narrationText": "في هذا الوثائقي نستعرض الأسباب التاريخية المعقدة التي أدت إلى نهاية دولة الأندلس.",
+      "visualType": "illustration",
+      "arabicImagePrompt": "رسم توضيحي لمنظر عام لمدينة غرناطة التاريخية وقصر الحمراء عند غروب الشمس.",
+      "englishImagePrompt": "Flat vector illustration of Alhambra palace at sunset in Andalusia.",
+      "sourceRequirements": "مرجع معماري أندلسي",
+      "generationStatus": "pending"
+    }
+  ],
+  "ollama": {
+    "baseUrl": "http://localhost:11434",
+    "model": "qwen3.5:4b"
+  }
+}

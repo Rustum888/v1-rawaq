@@ -43,6 +43,7 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({
       stageProgress: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
       research: {
         claims: [],
+        sources: [],
       },
       script: {
         targetWordCount: durationMinutes * 130,

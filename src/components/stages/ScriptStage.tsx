@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Project, ScriptSection, ResearchClaim } from '../../types/project';
 import { 
   FileText, 
@@ -10,7 +10,11 @@ import {
   Edit3, 
   Save, 
   BookMarked,
-  Cpu
+  Cpu,
+  XCircle,
+  Clock,
+  RefreshCw,
+  Server
 } from 'lucide-react';
 
 import { downloadBlob, generateScriptMarkdown } from '../../utils/exporters';
@@ -37,6 +41,17 @@ export const ScriptStage: React.FC<ScriptStageProps> = ({
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editContentText, setEditContentText] = useState('');
 
+  // Installed Ollama models list & user selection
+  const [installedModels, setInstalledModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>(project.ollama?.model || 'qwen3.5:4b');
+
+  // Generation Stopwatch & Abort Controller
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [requestStatus, setRequestStatus] = useState<'idle' | 'loading' | 'success' | 'cancelled' | 'error'>('idle');
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const timerRef = useRef<any>(null);
+
   const approvedClaims = getApprovedResearchClaims(project.research?.claims);
   const sections = project.script.sections || [];
 
@@ -45,26 +60,85 @@ export const ScriptStage: React.FC<ScriptStageProps> = ({
   const targetWords = project.durationMinutes * 130;
   const estimatedTotalMinutes = Math.round((totalWords / 130) * 10) / 10;
 
-  const ollamaModel = project.ollama?.model || 'qwen3.5:4b';
   const ollamaBaseUrl = project.ollama?.baseUrl || 'http://localhost:11434';
 
-  // Generate Script ONLY via Local Ollama API (qwen3.5:4b)
+  // Fetch installed models from Ollama /api/tags
+  const fetchInstalledModels = async () => {
+    setFetchingModels(true);
+    try {
+      const res = await fetch('/api/ollama/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl: ollamaBaseUrl }),
+      });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.models)) {
+        setInstalledModels(json.models);
+        if (json.models.length > 0 && !json.models.includes(selectedModel)) {
+          setSelectedModel(json.models[0]);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to list installed Ollama models', e);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInstalledModels();
+  }, [ollamaBaseUrl]);
+
+  // Stopwatch effect during generation
+  useEffect(() => {
+    if (loading) {
+      setElapsedSeconds(0);
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [loading]);
+
+  // Handle Cancel Generation
+  const handleCancelGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setRequestStatus('cancelled');
+    setError('تم إلغاء طلب توليد السيناريو بطلب من المستخدم.');
+  };
+
+  // Generate Script ONLY via Local Ollama API
   const handleGenerateScriptWithOllama = async () => {
     // Strictly filter claims with status === 'approved' using helper function
     const validApprovedClaims = getApprovedResearchClaims(project.research?.claims);
 
     if (validApprovedClaims.length === 0) {
+      setRequestStatus('error');
       setError('لا توجد أدلة معتمدة في مرحلة البحث! يرجى الانتقال إلى مرحلة "البحث والموثوقية" واعتمد بعض الأدلة والمصادر قبل صياغة السيناريو عبر Ollama.');
       return;
     }
 
     setLoading(true);
     setError(null);
+    setRequestStatus('loading');
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       const res = await fetch('/api/projects/script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           title: project.title,
           topic: project.topic,
@@ -72,8 +146,8 @@ export const ScriptStage: React.FC<ScriptStageProps> = ({
           tone: project.tone,
           approvedClaims: validApprovedClaims, // ONLY approved research claims included in payload
           provider: 'ollama',
-          selectedModel: ollamaModel,
-          model: ollamaModel, // Exclusively qwen3.5:4b or configured Ollama model
+          selectedModel: selectedModel,
+          model: selectedModel, // Exclusively selected Ollama model
           baseUrl: ollamaBaseUrl,
           systemPrompt: project.ollama?.systemPrompt,
           temperature: project.ollama?.temperature ?? 0.3,
@@ -101,21 +175,39 @@ export const ScriptStage: React.FC<ScriptStageProps> = ({
           sections: generatedSections,
           isGenerated: true,
           provider: 'ollama',
-          model: json.data.model || ollamaModel,
+          model: json.data.model || selectedModel,
           lastGeneratedAt: new Date().toISOString(),
+        },
+        ollama: {
+          enabled: true,
+          baseUrl: ollamaBaseUrl,
+          temperature: project.ollama?.temperature ?? 0.3,
+          systemPrompt: project.ollama?.systemPrompt || 'أنت كاتب سيناريو ومؤلف وثائقيات عربي محترف متماسك الصياغة باللغة العربية الفصحى المعاصرة.',
+          availableModels: project.ollama?.availableModels || [selectedModel],
+          ...project.ollama,
+          model: selectedModel,
         },
       };
 
       onUpdateProject(updatedProject);
+      setRequestStatus('success');
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setRequestStatus('cancelled');
+        setError('تم إلغاء العملية.');
+        return;
+      }
+
       console.error('Ollama Script Generation Failure:', err);
+      setRequestStatus('error');
       let errorText = err.message || 'حدث خطأ في الاتصال بخادم Ollama المحلي.';
       if (err.name === 'TypeError' || errorText.includes('Failed to fetch')) {
-        errorText = `تعذر الاتصال بـ Ollama على ${ollamaBaseUrl}. يرجى التأكد من تشغيل الخادم عبر 'ollama serve' وسحب النموذج بـ 'ollama pull ${ollamaModel}'.`;
+        errorText = `تعذر الاتصال بـ Ollama على ${ollamaBaseUrl}. يرجى التأكد من تشغيل الخادم عبر 'ollama serve' وسحب النموذج بـ 'ollama pull ${selectedModel}'.`;
       }
       setError(errorText);
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -193,7 +285,7 @@ export const ScriptStage: React.FC<ScriptStageProps> = ({
       
       {/* Control Header & Word Counter */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-lg">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-amber-400" />
@@ -203,42 +295,126 @@ export const ScriptStage: React.FC<ScriptStageProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              يصاغ السيناريو حصرياً بوساطة النموذج المحلي <strong className="text-purple-400">{ollamaModel}</strong> بناءً على <strong className="text-amber-400">{approvedClaims.length} أدلة معتمدة</strong> من مرحلة البحث.
+              يصاغ السيناريو حصرياً بوساطة النموذج المحلي <strong className="text-purple-400">{selectedModel}</strong> بناءً على <strong className="text-amber-400">{approvedClaims.length} أدلة معتمدة</strong> من مرحلة البحث.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-3 shrink-0 w-full lg:w-auto">
+            
+            {/* Installed Ollama Models Selector Dropdown */}
+            <div className="flex items-center gap-2 bg-slate-950 px-3 py-2 rounded-xl border border-slate-800 text-xs">
+              <Cpu className="w-4 h-4 text-purple-400 shrink-0" />
+              <span className="text-slate-400 font-medium">النموذج:</span>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="bg-slate-900 border border-slate-800 text-purple-300 font-bold font-mono px-2 py-1 rounded focus:outline-none focus:border-purple-500 text-xs"
+              >
+                {installedModels.length > 0 ? (
+                  installedModels.map(m => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="qwen3.5:4b">qwen3.5:4b</option>
+                    <option value="schien/qwen3.5-lite:latest">schien/qwen3.5-lite:latest</option>
+                  </>
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={fetchInstalledModels}
+                title="تحديث قائمة النماذج المثبتة"
+                className="p-1 text-slate-400 hover:text-slate-200"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${fetchingModels ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
             {sections.length > 0 && (
               <button
                 onClick={() => downloadBlob(generateScriptMarkdown(project), `script_${project.id}.md`, 'text/markdown;charset=utf-8')}
                 className="px-3 py-2.5 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 rounded-xl border border-amber-500/30 transition-colors"
               >
-                <span>تصدير السيناريو (Markdown)</span>
+                <span>تصدير (Markdown)</span>
               </button>
             )}
 
             <button
               onClick={handleAddBlankSection}
-              className="px-3.5 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+              className="px-3 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 transition-colors flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
-              <span>إضافة قسم يدوي</span>
+              <span>قسم يدوي</span>
             </button>
 
-            <button
-              onClick={handleGenerateScriptWithOllama}
-              disabled={loading || approvedClaims.length === 0}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-purple-950 bg-purple-400 hover:bg-purple-300 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl shadow-lg shadow-purple-500/10 transition-all"
-            >
-              <Cpu className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              <span>{loading ? 'جاري الصياغة بـ Ollama...' : `صياغة السيناريو عبر Ollama (${ollamaModel})`}</span>
-            </button>
+            {!loading ? (
+              <button
+                onClick={handleGenerateScriptWithOllama}
+                disabled={approvedClaims.length === 0}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-purple-950 bg-purple-400 hover:bg-purple-300 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl shadow-lg shadow-purple-500/10 transition-all shrink-0"
+              >
+                <Cpu className="w-4 h-4" />
+                <span>صياغة السيناريو عبر Ollama ({selectedModel})</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleCancelGeneration}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-red-600 hover:bg-red-500 rounded-xl shadow-lg transition-all shrink-0"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>إلغاء التوليد ({elapsedSeconds} ثانية)</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Live Word Count & Provider Status Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-slate-800">
-          
+        {/* Live Status and Execution Badges */}
+        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs flex flex-wrap items-center justify-between gap-3 font-mono">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <Server className="w-3.5 h-3.5 text-amber-400" />
+              <span>المنفذ:</span>
+              <span className="text-amber-300">{ollamaBaseUrl}</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <Cpu className="w-3.5 h-3.5 text-purple-400" />
+              <span>المزود والنموذج:</span>
+              <span className="text-purple-300">Ollama ({selectedModel})</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {loading && (
+              <div className="flex items-center gap-2 text-purple-300 bg-purple-500/10 px-3 py-1 rounded-lg border border-purple-500/20">
+                <Clock className="w-3.5 h-3.5 animate-spin" />
+                <span>جاري التوليد عبر Ollama... ({elapsedSeconds}s)</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 font-sans">حالة الطلب:</span>
+              <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                requestStatus === 'loading' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
+                requestStatus === 'success' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                requestStatus === 'cancelled' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
+                requestStatus === 'error' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+                'bg-slate-800 text-slate-400'
+              }`}>
+                {requestStatus === 'loading' ? `قيد التنفيذ (${elapsedSeconds}s)` :
+                 requestStatus === 'success' ? 'تم بنجاح' :
+                 requestStatus === 'cancelled' ? 'تم الإلغاء' :
+                 requestStatus === 'error' ? 'فشل الطلب' : 'جاهز'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Word Count Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
           <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1">
             <span className="text-[11px] font-semibold text-slate-400 block">إجمالي كلمات السيناريو</span>
             <div className="flex items-baseline gap-2">
@@ -259,17 +435,17 @@ export const ScriptStage: React.FC<ScriptStageProps> = ({
             <span className="text-[11px] font-semibold text-slate-400 block">مزود الصياغة المعتمد</span>
             <div className="flex items-baseline gap-2">
               <span className="text-xs font-bold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 font-mono">
-                Ollama: {project.script.model || ollamaModel}
+                Ollama: {selectedModel}
               </span>
             </div>
           </div>
-
         </div>
       </div>
 
       {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300">
-          {error}
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+          <p className="leading-relaxed">{error}</p>
         </div>
       )}
 
@@ -290,7 +466,7 @@ export const ScriptStage: React.FC<ScriptStageProps> = ({
             <FileText className="w-8 h-8 text-slate-600 mx-auto" />
             <h3 className="text-sm font-bold text-slate-300">لم يتم إنشاء أقسام السيناريو بعد</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              اضغط على "صياغة السيناريو عبر Ollama ({ollamaModel})" لتحويل أدلة البحث الموثقة إلى نص وثائقي مشوق ومجهز للإلقاء.
+              اضغط على "صياغة السيناريو عبر Ollama ({selectedModel})" لتحويل أدلة البحث الموثقة إلى نص وثائقي مشوق ومجهز للإلقاء.
             </p>
           </div>
         ) : (
@@ -419,3 +595,4 @@ function countArabicWords(text: string): number {
   if (!text) return 0;
   return text.trim().split(/\s+/).filter(w => w.length > 0).length;
 }
+

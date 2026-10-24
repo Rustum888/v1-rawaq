@@ -48,70 +48,76 @@ export const ReadmeModal: React.FC<ReadmeModalProps> = ({ isOpen, onClose }) => 
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400">
                     <th className="py-1.5 px-2">خاصية النظام</th>
-                    <th className="py-1.5 px-2">الوسم / النتيجة</th>
+                    <th className="py-1.5 px-2">وسم الاعتماد (Evidence Label)</th>
                     <th className="py-1.5 px-2">الدليل البرمجي والتنفيذي</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-slate-300">
                   <tr>
-                    <td className="py-2 px-2 font-bold">1. Google Search Grounding Request</td>
-                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED</span> <span className="bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-mono text-[10px]">REQUIRES API KEY</span></td>
-                    <td className="py-2 px-2 font-mono text-slate-400">tools: [{'{ googleSearch: {} }'}] في server.ts</td>
+                    <td className="py-2 px-2 font-bold">1. Google Search Grounding Research</td>
+                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED IN CODE</span></td>
+                    <td className="py-2 px-2 font-mono text-slate-400">Gemini 3.8 Flash + googleSearch tools في server.ts (اختياري عند توفر المفتاح)</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-2 font-bold">2. groundingChunks Extraction</td>
-                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED</span></td>
-                    <td className="py-2 px-2">استخراج المراجع وروابط البحث وعرضها في واجهة البحث</td>
+                    <td className="py-2 px-2 font-bold">2. Manual Research without Gemini Key</td>
+                    <td className="py-2 px-2"><span className="bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded font-mono text-[10px]">MANUAL RESEARCH</span></td>
+                    <td className="py-2 px-2">إدخال الأدلة والمصادر يدوياً مع وسمها بـ "Manual source — requires user review"</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-2 font-bold">3. Script Route /api/projects/script</td>
-                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED</span> <span className="bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-mono text-[10px]">REQUIRES USER ACTION</span></td>
-                    <td className="py-2 px-2">توليد السيناريو حصراً عبر Ollama المحلي (qwen3.5:4b) مع حظر الأدلة غير المعتمدة</td>
+                    <td className="py-2 px-2 font-bold">3. Ollama Script Generation (/api/projects/script)</td>
+                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED IN CODE</span> <span className="bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-mono text-[10px]">USER ACTION REQUIRED</span></td>
+                    <td className="py-2 px-2">صياغة السيناريو حصراً بـ Ollama (qwen3.5:4b) مع مهلة 180s وإلغاء فوري</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-2 font-bold">4. Unapproved Claims Rejection</td>
-                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED</span></td>
-                    <td className="py-2 px-2">تصفية حازمة approvedClaims.filter(c =&gt; c.status === 'approved')</td>
+                    <td className="py-2 px-2 font-bold">4. Zero Approved Claims Rejection</td>
+                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED IN CODE</span></td>
+                    <td className="py-2 px-2">رفض الطلب بكود HTTP 400 وحظر إرسال أي أدلة غير معتمدة</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-2 font-bold">5. Andalusia Citations Data</td>
-                    <td className="py-2 px-2"><span className="bg-sky-500/20 text-sky-400 px-1.5 py-0.5 rounded font-mono text-[10px]">DEMO ONLY</span> <span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED</span></td>
-                    <td className="py-2 px-2">مصادر تاريخية موثقة من متاحف وجامعات إسبانيا محملة مسبقاً</td>
+                    <td className="py-2 px-2 font-bold">5. Scene Generation (/api/projects/scenes)</td>
+                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED IN CODE</span></td>
+                    <td className="py-2 px-2">تقطيع المشاهد بـ Ollama افتراضياً ودون أي fallback خفي لـ Gemini</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-2 font-bold">6. Local Ollama (qwen3.5:4b) Integration</td>
-                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED</span> <span className="bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-mono text-[10px]">REQUIRES USER ACTION</span></td>
-                    <td className="py-2 px-2">استعلام /api/tags و /api/chat مع التحقق من qwen3.5:4b وتوليد السيناريو الحصري</td>
+                    <td className="py-2 px-2 font-bold">6. Local Piper Neural TTS</td>
+                    <td className="py-2 px-2"><span className="bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-mono text-[10px]">USER ACTION REQUIRED</span></td>
+                    <td className="py-2 px-2">يتطلب إيقاد خادم Piper أو endpoint محلي على جهاز المستخدم</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-2 font-bold">7. Local TTS Audio Generation</td>
-                    <td className="py-2 px-2"><span className="bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-mono text-[10px]">REQUIRES USER ACTION</span></td>
-                    <td className="py-2 px-2">يتطلب إيقاد خادم Piper المحلي على جهاز المستخدم</td>
+                    <td className="py-2 px-2 font-bold">7. Final Video MP4 Rendering</td>
+                    <td className="py-2 px-2"><span className="bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-mono text-[10px]">NOT IMPLEMENTED</span></td>
+                    <td className="py-2 px-2">يصدر التطبيق Video Manifest JSON للتجميع في Shotcut / Premiere / Remotion</td>
                   </tr>
                   <tr>
                     <td className="py-2 px-2 font-bold">8. Build & Type-Check</td>
-                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED</span></td>
-                    <td className="py-2 px-2 font-mono text-slate-400">npm run lint &amp; npm run build نجحا بكود 0</td>
+                    <td className="py-2 px-2"><span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono text-[10px]">VERIFIED AT BUILD TIME</span></td>
+                    <td className="py-2 px-2 font-mono text-slate-400">npm run lint &amp; npm run build بنجاح (Exit code 0)</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          {/* Section 1: Architecture Overview */}
+          {/* Section 1: Quickstart Commands */}
           <div className="space-y-2 p-4 bg-slate-950 rounded-xl border border-slate-800">
             <h3 className="text-sm font-bold text-amber-400 flex items-center gap-2">
-              <Cpu className="w-4 h-4" />
-              1. معمارية التطبيق وفصل مزودي الذكاء الاصطناعي
+              <Server className="w-4 h-4" />
+              1. أوامر التشغيل وإعداد Ollama المحلي
             </h3>
-            <p>
-              يعتمد تطبيق <strong>رِواق</strong> على فصل حازم ومحكم لمزودي الذكاء الاصطناعي:
-            </p>
-            <p className="text-slate-400">
-              - <strong>البحث والربط بالمصادر (Gemini 3.8 Flash):</strong> مخصص حصراً لمرحلة البحث الميداني مع Google Search Grounding لاستخراج جدول الأدلة الموثقة والمراجع الأكاديمية.
+            <p className="font-bold text-slate-200">تشغيل التطبيق:</p>
+            <pre className="p-3 bg-slate-900 rounded-lg border border-slate-800 font-mono text-[11px] text-amber-300 dir-ltr text-left">
+              npm install
               <br />
-              - <strong>صياغة السيناريو والصياغة (Ollama qwen3.5:4b):</strong> مخصص حصراً لمرحلة كتابة وصياغة السيناريو الفصيح، ويعتمد <strong>حزماً على الأدلة المعتمدة فقط</strong> من مرحلة البحث. عند عدم توفر خادم Ollama المحلي، يظهر خطأ صريح بدون أي توليد وهمي.
-            </p>
+              npm run dev
+            </pre>
+            <p className="font-bold text-slate-200 pt-1">إعداد وتأكيد Ollama:</p>
+            <pre className="p-3 bg-slate-900 rounded-lg border border-slate-800 font-mono text-[11px] text-purple-300 dir-ltr text-left">
+              ollama list
+              <br />
+              ollama pull qwen3.5:4b
+              <br />
+              ollama serve  # (تنبيه: لا تقم بتشغيل ollama serve إذا كانت الخدمة تعمل بالفعل كـ background service)
+            </pre>
           </div>
 
           {/* Section 2: Local TTS Contract */}

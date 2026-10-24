@@ -30,6 +30,8 @@ export const OllamaSettingsModal: React.FC<OllamaSettingsModalProps> = ({
 }) => {
   const currentConfig: OllamaConfig = config || DEFAULT_OLLAMA_CONFIG;
 
+  const [activeTab, setActiveTab] = useState<'settings' | 'diagnostics'>('settings');
+
   const [enabled, setEnabled] = useState(currentConfig.enabled);
   const [baseUrl, setBaseUrl] = useState(currentConfig.baseUrl || 'http://localhost:11434');
   const [model, setModel] = useState(currentConfig.model || 'qwen3.5:4b');
@@ -43,6 +45,10 @@ export const OllamaSettingsModal: React.FC<OllamaSettingsModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<{ isSuccess: boolean; text: string } | null>(null);
   const [testResponse, setTestResponse] = useState<{ content: string; durationMs: number; modelUsed: string } | null>(null);
 
+  // Diagnostics state
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [diagnosticsResult, setDiagnosticsResult] = useState<any>(null);
+
   useEffect(() => {
     if (config) {
       setEnabled(config.enabled);
@@ -55,6 +61,24 @@ export const OllamaSettingsModal: React.FC<OllamaSettingsModalProps> = ({
   }, [config]);
 
   if (!isOpen) return null;
+
+  // Diagnostics runner
+  const handleRunDiagnostics = async () => {
+    setDiagnosticsLoading(true);
+    try {
+      const res = await fetch('/api/diagnostics/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl, model }),
+      });
+      const json = await res.json();
+      setDiagnosticsResult(json.results);
+    } catch (e: any) {
+      console.error('Diagnostics failed', e);
+    } finally {
+      setDiagnosticsLoading(false);
+    }
+  };
 
   // 1. Refresh Models from GET /api/tags
   const handleRefreshModels = async () => {
@@ -178,105 +202,221 @@ export const OllamaSettingsModal: React.FC<OllamaSettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Enable / Disable Toggle */}
-        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
-          <div className="space-y-0.5">
-            <span className="text-xs font-bold text-slate-100 block">تفعيل خيار التوليد عبر Ollama المحلي</span>
-            <span className="text-[11px] text-slate-400 block">
-              يُستخدم فقط للمسودات وإعادة الصياغة وإشارات المشاهد. (البحث والتوثيق يظلان حكراً على Gemini Search Grounding).
-            </span>
-          </div>
-
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
           <button
             type="button"
-            onClick={() => setEnabled(!enabled)}
-            className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${
-              enabled ? 'bg-amber-500 justify-end' : 'bg-slate-800 justify-start'
+            onClick={() => setActiveTab('settings')}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+              activeTab === 'settings'
+                ? 'bg-amber-500 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md" />
+            إعدادات Ollama
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('diagnostics');
+              if (!diagnosticsResult) handleRunDiagnostics();
+            }}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${
+              activeTab === 'diagnostics'
+                ? 'bg-purple-500 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span>لوحة الفحص والتشخيص (Diagnostics)</span>
           </button>
         </div>
 
-        {/* Form Fields */}
-        <div className="space-y-4">
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                عنوان الخادم المحلي (Base URL)
-              </label>
-              <input
-                type="text"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="http://localhost:11434"
-                className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 font-mono focus:outline-none focus:border-amber-500 dir-ltr text-left"
-              />
+        {activeTab === 'diagnostics' ? (
+          /* Diagnostics Panel View */
+          <div className="space-y-4 text-xs">
+            <div className="flex items-center justify-between bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <div>
+                <h3 className="font-bold text-slate-100">فحص النظام والخدمات الحية</h3>
+                <p className="text-[11px] text-slate-400">اختبار مفتاح Gemini، اتصال Ollama، صحة النموذج، وقواعد التوليد.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRunDiagnostics}
+                disabled={diagnosticsLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500 hover:bg-purple-400 text-white font-bold rounded-lg shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${diagnosticsLoading ? 'animate-spin' : ''}`} />
+                <span>إعادة الفحص</span>
+              </button>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-slate-300">
-                  النموذج المحدد (Model)
-                </label>
-                <button
-                  type="button"
-                  onClick={handleRefreshModels}
-                  disabled={isFetchingModels}
-                  className="text-[10px] text-amber-400 hover:underline flex items-center gap-1"
-                >
-                  <RefreshCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
-                  <span>تحديث القائمة (/api/tags)</span>
-                </button>
+            {diagnosticsLoading ? (
+              <div className="p-8 text-center text-slate-400 space-y-2">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-purple-400" />
+                <p>جاري تشخيص الاتصالات والخدمات الحية...</p>
+              </div>
+            ) : diagnosticsResult ? (
+              <div className="space-y-3">
+                
+                {/* Gemini Status Card */}
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between font-mono">
+                    <span className="font-bold text-slate-200">1. Gemini API Key Status:</span>
+                    <span className={diagnosticsResult.gemini?.hasKey ? 'text-emerald-400 font-bold' : 'text-yellow-400 font-bold'}>
+                      {diagnosticsResult.gemini?.hasKey ? 'متصل (Available)' : 'غير متصل (Manual Mode)'}
+                    </span>
+                  </div>
+                  <p className="text-slate-400 text-[11px]">{diagnosticsResult.gemini?.status}</p>
+                </div>
+
+                {/* Ollama Tags Status Card */}
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1 font-mono">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-200">2. Ollama Endpoint (/api/tags):</span>
+                    <span className={diagnosticsResult.ollamaTags?.success ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
+                      {diagnosticsResult.ollamaTags?.success ? `نجاح (${diagnosticsResult.ollamaTags.durationMs}ms)` : 'فشل الاتصال'}
+                    </span>
+                  </div>
+                  {diagnosticsResult.ollamaTags?.error ? (
+                    <p className="text-red-300 text-[11px]">{diagnosticsResult.ollamaTags.error}</p>
+                  ) : (
+                    <div className="text-[11px] text-slate-300 space-y-1">
+                      <p>النماذج المثبتة ({diagnosticsResult.ollamaTags?.availableModels?.length}): {diagnosticsResult.ollamaTags?.availableModels?.join(', ')}</p>
+                      <p>النموذج المستهدف ({model}): {diagnosticsResult.ollamaTags?.hasTargetModel ? '✓ متوفر' : '✗ غير مثبت'}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ollama Chat Ping Card */}
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1 font-mono">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-200">3. Ollama Chat Request (/api/chat):</span>
+                    <span className={diagnosticsResult.ollamaChat?.success ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
+                      {diagnosticsResult.ollamaChat?.success ? `نجاح (${diagnosticsResult.ollamaChat.durationMs}ms)` : 'فشل'}
+                    </span>
+                  </div>
+                  {diagnosticsResult.ollamaChat?.error && (
+                    <p className="text-red-300 text-[11px]">{diagnosticsResult.ollamaChat.error}</p>
+                  )}
+                </div>
+
+                {/* Script Generation Rule Card */}
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1 font-mono">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-200">4. Script Approved Claims Filter Rule:</span>
+                    <span className="text-emerald-400 font-bold">VERIFIED IN CODE</span>
+                  </div>
+                  <p className="text-slate-400 text-[11px]">{diagnosticsResult.scriptRejectionRule?.rule}</p>
+                </div>
+
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          /* Settings Form View */
+          <>
+            {/* Enable / Disable Toggle */}
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-slate-100 block">تفعيل خيار التوليد عبر Ollama المحلي</span>
+                <span className="text-[11px] text-slate-400 block">
+                  يُستخدم فقط للمسودات وإعادة الصياغة وإشارات المشاهد. (البحث والتوثيق يظلان حكراً على Gemini Search Grounding).
+                </span>
               </div>
 
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-amber-300 focus:outline-none focus:border-amber-500"
+              <button
+                type="button"
+                onClick={() => setEnabled(!enabled)}
+                className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${
+                  enabled ? 'bg-amber-500 justify-end' : 'bg-slate-800 justify-start'
+                }`}
               >
-                {availableModels.length > 0 ? (
-                  availableModels.map((m) => (
-                    <option key={m} value={m}>
-                      {m} {m.includes('qwen3.5') ? '★ (مستهدف)' : ''}
-                    </option>
-                  ))
-                ) : (
-                  <option value="qwen3.5:4b">qwen3.5:4b (افتراضي)</option>
-                )}
-              </select>
+                <div className="w-4 h-4 rounded-full bg-slate-950 shadow-md" />
+              </button>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              درجة حرارة التوليد (Temperature: {temperature})
-            </label>
-            <input
-              type="range"
-              min="0.0"
-              max="1.0"
-              step="0.05"
-              value={temperature}
-              onChange={(e) => setTemperature(parseFloat(e.target.value))}
-              className="w-full accent-amber-500 cursor-pointer"
-            />
-          </div>
+            {/* Form Fields */}
+            <div className="space-y-4">
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    عنوان الخادم المحلي (Base URL)
+                  </label>
+                  <input
+                    type="text"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="http://localhost:11434"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 font-mono focus:outline-none focus:border-amber-500 dir-ltr text-left"
+                  />
+                </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              التوجيه النظامي العربي (System Prompt)
-            </label>
-            <textarea
-              rows={3}
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 leading-relaxed focus:outline-none focus:border-amber-500"
-            />
-          </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      النموذج المحدد (Model)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRefreshModels}
+                      disabled={isFetchingModels}
+                      className="text-[10px] text-amber-400 hover:underline flex items-center gap-1"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
+                      <span>تحديث القائمة (/api/tags)</span>
+                    </button>
+                  </div>
 
-        </div>
+                  <select
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-amber-300 focus:outline-none focus:border-amber-500"
+                  >
+                    {availableModels.length > 0 ? (
+                      availableModels.map((m) => (
+                        <option key={m} value={m}>
+                          {m} {m.includes('qwen3.5') ? '★ (مستهدف)' : ''}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="qwen3.5:4b">qwen3.5:4b (افتراضي)</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  درجة حرارة التوليد (Temperature: {temperature})
+                </label>
+                <input
+                  type="range"
+                  min="0.0"
+                  max="1.0"
+                  step="0.05"
+                  value={temperature}
+                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                  className="w-full accent-amber-500 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  التوجيه النظامي العربي (System Prompt)
+                </label>
+                <textarea
+                  rows={3}
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 leading-relaxed focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+            </div>
+          </>
+        )}
 
         {/* Status Message Display */}
         {statusMessage && (

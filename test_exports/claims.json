@@ -1,0 +1,56 @@
+[
+  {
+    "id": "claim-m1",
+    "claimText": "تسببت صراعات ملوك الطوائف والانقسامات الداخلية في إضعاف الدولة الأندلسية بشكل دراماتيكي.",
+    "sourceIds": [
+      "src-m1"
+    ],
+    "sourceTitle": "نفح الطيب من غصن الأندلس الرطيب",
+    "sourceUrl": "https://archive.org/details/nafhat-al-teeb",
+    "publisher": "المقرّي التلمساني",
+    "sourceType": "primary",
+    "publicationDate": "1628",
+    "evidenceSummary": "وثق المقري نصوص المكاتبات الخلافية بين أمراء الطوائف واستعانتهم بالقوى الخارجية.",
+    "confidence": "high",
+    "disputeStatus": "undisputed",
+    "status": "approved",
+    "isManual": true,
+    "manualSourceLabel": "Manual source — requires user review"
+  },
+  {
+    "id": "claim-m2",
+    "claimText": "سقوط غرناطة عام 1492م تم بموجب معاهدة تسليم وقعها آخر ملوكها أبو عبد الله الصغير.",
+    "sourceIds": [
+      "src-m2"
+    ],
+    "sourceTitle": "دولة الإسلام في الأندلس",
+    "sourceUrl": "https://archive.org/details/islam-in-andalusia",
+    "publisher": "محمد عبد الله عنان",
+    "sourceType": "academic",
+    "publicationDate": "1997",
+    "evidenceSummary": "تحليل دقيق لشروط معاهدة تسليم غرناطة المكونة من 67 بنداً.",
+    "confidence": "high",
+    "disputeStatus": "undisputed",
+    "status": "approved",
+    "isManual": true,
+    "manualSourceLabel": "Manual source — requires user review"
+  },
+  {
+    "id": "claim-m3",
+    "claimText": "ادعاء غير موثق يدعي أن أسباب السقوط كانت محض عوامل مناخية وسحرية.",
+    "sourceIds": [
+      "src-m1"
+    ],
+    "sourceTitle": "رواية شعبية غير أكاديمية",
+    "sourceUrl": "https://example.com/unverified",
+    "publisher": "غير معروف",
+    "sourceType": "other",
+    "publicationDate": "2024",
+    "evidenceSummary": "لا يوجد دليل تاريخي.",
+    "confidence": "low",
+    "disputeStatus": "disputed",
+    "status": "rejected",
+    "isManual": true,
+    "manualSourceLabel": "Manual source — requires user review"
+  }
+]

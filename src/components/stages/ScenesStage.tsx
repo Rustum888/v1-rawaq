@@ -41,8 +41,38 @@ export const ScenesStage: React.FC<ScenesStageProps> = ({
   const [generatingSceneId, setGeneratingSceneId] = useState<string | null>(null);
   const [copiedSceneId, setCopiedSceneId] = useState<string | null>(null);
 
+  // Stopwatch & Abort Controller
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [requestStatus, setRequestStatus] = useState<'idle' | 'loading' | 'success' | 'cancelled' | 'error'>('idle');
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+  const timerRef = React.useRef<any>(null);
+
   const scenes = project.scenes || [];
   const scriptSections = project.script.sections || [];
+
+  React.useEffect(() => {
+    if (loading) {
+      setElapsedSeconds(0);
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [loading]);
+
+  const handleCancelScenes = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setRequestStatus('cancelled');
+    setError('تم إلغاء تقطيع المشاهد بطلب من المستخدم.');
+  };
 
   // Generate Scenes Plan from approved script
   const handleGenerateScenes = async () => {
@@ -53,11 +83,16 @@ export const ScenesStage: React.FC<ScenesStageProps> = ({
 
     setLoading(true);
     setError(null);
+    setRequestStatus('loading');
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       const res = await fetch('/api/projects/scenes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           scriptSections,
           projectTitle: project.title,
@@ -80,11 +115,19 @@ export const ScenesStage: React.FC<ScenesStageProps> = ({
       };
 
       onUpdateProject(updatedProject);
+      setRequestStatus('success');
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setRequestStatus('cancelled');
+        setError('تم إلغاء العملية.');
+        return;
+      }
       console.error(err);
+      setRequestStatus('error');
       setError(err.message || 'حدث خطأ في إنشاء المشاهد');
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -218,14 +261,23 @@ export const ScenesStage: React.FC<ScenesStageProps> = ({
             </button>
           ) : <div />}
 
-          <button
-            onClick={handleGenerateScenes}
-            disabled={loading || scriptSections.length === 0}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl shadow-lg shadow-amber-500/10 transition-all"
-          >
-            <Sparkles className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>{loading ? 'جاري تقسيم المشاهد وتصاوير البصريات...' : 'توليد خطة المشاهد من السيناريو'}</span>
-          </button>
+          {!loading ? (
+            <button
+              onClick={handleGenerateScenes}
+              disabled={scriptSections.length === 0}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl shadow-lg shadow-amber-500/10 transition-all"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>توليد خطة المشاهد من السيناريو ({scenesProvider})</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleCancelScenes}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-red-600 hover:bg-red-500 rounded-xl shadow-lg transition-all"
+            >
+              <span>إلغاء التوليد ({elapsedSeconds} ثانية)</span>
+            </button>
+          )}
         </div>
       </div>
 
